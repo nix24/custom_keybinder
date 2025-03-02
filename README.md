@@ -20,10 +20,44 @@ A Python application for creating and managing custom keyboard shortcuts with sy
 
 ## Installation 🛠️
 
+### Using uv (Recommended)
+
+[uv](https://github.com/astral-sh/uv) is a modern Python package installer and resolver that's significantly faster than pip. To install with uv:
+
 ```bash
 # Clone repository
 git clone https://github.com/nix24/custom_keybinder.git
 cd custom_keybinder
+
+# Method 1: Using the helper script
+python uv_install.py
+
+# Method 2: Manual installation
+uv venv .venv
+uv pip install -r requirements-uv.txt
+
+# Activate virtual environment
+# On Windows:
+.venv\Scripts\activate
+# On Unix/MacOS:
+# source .venv/bin/activate
+```
+
+### Using pip (Legacy)
+
+```bash
+# Clone repository
+git clone https://github.com/nix24/custom_keybinder.git
+cd custom_keybinder
+
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+# On Windows:
+.venv\Scripts\activate
+# On Unix/MacOS:
+# source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt

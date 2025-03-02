@@ -1,176 +1,276 @@
 from rich.console import Console
 from rich.table import Table
-import keyboard  # For capturing keyboard events
+from rich.panel import Panel
+from rich.layout import Layout
+from rich.prompt import Prompt
+from rich.text import Text
+import keyboard
 import time
 import sys
-import gc
+import os
+from typing import NamedTuple, List
+from collections import defaultdict
 
 console = Console()
 
-# File: startup_options_list.py
-
-# Sample keybindings for demonstration
-class KeyBinding:
-    __slots__ = ('key', 'value', 'status')
+# Improved class with proper typing
+class KeyBinding(NamedTuple):
+    key: str
+    value: str
+    status: bool = True
+# Global state management
+class KeyBinderState:
+    def __init__(self):
+        self.bindings: List[KeyBinding] = []
+        self.load_default_bindings()
+        
+    def load_default_bindings(self):
+        defaults = {
+            'Alt+j': 'q',
+            'Alt+k': 'w',
+            'Alt+l': 'e'
+        }
+        self.bindings = [KeyBinding(sys.intern(k), sys.intern(v)) for k, v in defaults.items()]
     
-    def __init__(self, key, value, status=True):
-        self.key = sys.intern(key)
-        self.value = sys.intern(value)
-        self.status = status
+    def add_binding(self, key: str, value: str) -> bool:
+        if any(b.key == key for b in self.bindings):
+            return False
+        self.bindings.append(KeyBinding(sys.intern(key), sys.intern(value)))
+        return True
+    
+    def delete_binding(self, index: int) -> bool:
+        if 0 <= index < len(self.bindings):
+            self.bindings.pop(index)
+            return True
+        return False
+    
+    def edit_binding(self, index: int, new_value: str) -> bool:
+        if 0 <= index < len(self.bindings):
+            binding = self.bindings[index]
+            self.bindings[index] = KeyBinding(binding.key, sys.intern(new_value), binding.status)
+            return True
+        return False
+    
+    def toggle_binding(self, index: int) -> bool:
+        if 0 <= index < len(self.bindings):
+            binding = self.bindings[index]
+            self.bindings[index] = KeyBinding(binding.key, binding.value, not binding.status)
+            return True
+        return False
 
-# Convert keybindings to tuple of KeyBinding objects
-keybindings = tuple(
-    KeyBinding(key, value) for key, value in {
-        sys.intern('Alt+j'): sys.intern('q'),
-        sys.intern('Alt+k'): sys.intern('w'),
-        sys.intern('Alt+l'): sys.intern('e')
-    }.items()
-)
+# Initialize state
+state = KeyBinderState()
 
+# UI components
+def create_header(title: str) -> Panel:
+    return Panel(
+        Text(title, style="bold blue", justify="center"),
+        border_style="bright_blue"
+    )
 
-# Function to display options
-def display_options():
-    console.print("[bold green]Custom Keybinder Options[/bold green]")
-    console.print("1. View/Toggle Key Bindings")
-    console.print("2. Add Key Binding")
-    console.print("3. Delete Key Binding")
-    console.print("4. Edit Key Binding")
-    console.print("5. Run Key Binder")
-    console.print("6. Exit Program")
-
-
-# Function to view and toggle keybindings
-def view_toggle_bindings():
-    table = Table(title="Current Key Bindings")
+def create_bindings_table() -> Table:
+    table = Table(
+        show_header=True, 
+        header_style="bold cyan", 
+        box=None,
+        title="Current Key Bindings",
+        title_style="bold magenta",
+        expand=True
+    )
+    
+    table.add_column("#", justify="right", style="dim")
     table.add_column("Key Combination", justify="center", style="cyan")
     table.add_column("Mapped To", justify="center", style="magenta")
-    table.add_column("Status", justify="center", style="green")
-
-    for binding in keybindings:
-        status = "ON" if binding.status else "OFF"
-        table.add_row(binding.key, binding.value, status)
-
-    console.print(table)
-
-    key_to_toggle = input(
-        "Enter the key combination to toggle or press Enter to go back: "
-    )
-    for binding in keybindings:
-        if binding.key == key_to_toggle:
-            binding.status = not binding.status
-            console.print(
-                f"[bold green]{key_to_toggle} toggled to {'ON' if binding.status else 'OFF'}[/bold green]"
-            )
-            break
-
-
-# Function to add keybinding
-def add_binding():
-    global keybindings
-    key_combination = input("Enter the new key combination: ")
-    mapped_to = input("Enter the key to map to: ")
-    for binding in keybindings:
-        if binding.key == key_combination:
-            console.print("[bold red]Key combination already exists.[/bold red]")
-            return
-    keybindings += (KeyBinding(key_combination, mapped_to),)
-    console.print(
-        f"[bold green]Added binding: {key_combination} -> {mapped_to}[/bold green]"
-    )
-
-
-def delete_binding():
-    global keybindings
-    console.print("[bold yellow]Current Key Bindings:[/bold yellow]")
-    for index, binding in enumerate(keybindings, start=1):
-        status = "ON" if binding.status else "OFF"
-        console.print(f"{index}. {binding.key} -> {binding.value} [{status}]")
-
-    binding_number = input(
-        "Enter the number of the key binding to delete or press Enter to go back: "
-    )
-    if binding_number.isdigit() and 1 <= int(binding_number) <= len(keybindings):
-        key_to_delete = keybindings[int(binding_number) - 1].key
-        keybindings = tuple(binding for binding in keybindings if binding.key != key_to_delete)
-        console.print(f"[bold green]Deleted binding: {key_to_delete}[/bold green]")
-    else:
-        console.print("[bold red]Invalid input. No binding deleted.[/bold red]")
-
-
-# edit function
-def edit_binding():
-    console.print("[bold yellow]Current Key Bindings:[/bold yellow]")
-    for index, binding in enumerate(keybindings, start=1):
-        status = "ON" if binding.status else "OFF"
-        console.print(f"{index}. {binding.key} -> {binding.value} [{status}]")
-
-    binding_number = input(
-        "Enter the number of the key binding to edit or press Enter to go back: "
-    )
-    if binding_number.isdigit() and 1 <= int(binding_number) <= len(keybindings):
-        binding_to_edit = keybindings[int(binding_number) - 1]
-        new_mapped_to = input(
-            f"Enter new value for {binding_to_edit.key} (current: {binding_to_edit.value}): "
+    table.add_column("Status", justify="center")
+    
+    for i, binding in enumerate(state.bindings):
+        status_style = "green bold" if binding.status else "red"
+        status_text = "ACTIVE" if binding.status else "DISABLED"
+        table.add_row(
+            str(i+1),
+            binding.key,
+            binding.value,
+            f"[{status_style}]{status_text}[/{status_style}]"
         )
-        binding_to_edit.value = new_mapped_to
-        console.print(
-            f"[bold green]Updated binding: {binding_to_edit.key} -> {new_mapped_to}[/bold green]"
-        )
-    else:
-        console.print("[bold red]Invalid input. No binding edited.[/bold red]")
+    
+    return table
 
-
-# Function to run key binder
-def run_keybinder():
-    console.print(
-        "[bold yellow]Running Key Binder. Press Ctrl+C to stop.[/bold yellow]"
+# Menu actions
+def display_menu():
+    # More thorough console clearing
+    console.clear()
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    # Create layout for menu
+    layout = Layout()
+    layout.split_column(
+        Layout(create_header("🚀 KeyBinder Pro"), size=3),
+        Layout(name="content"),
+        Layout(Panel("[bold green]Options:[/bold green]\n"
+                     "1. [cyan]View/Toggle[/cyan] Key Bindings\n"
+                     "2. [cyan]Add[/cyan] Key Binding\n"
+                     "3. [cyan]Delete[/cyan] Key Binding\n"
+                     "4. [cyan]Edit[/cyan] Key Binding\n"
+                     "5. [cyan]Run[/cyan] Key Binder\n"
+                     "6. [red]Exit[/red] Program", 
+                     border_style="green"), size=10)
     )
     
-    # Dictionary to track last press time for debouncing
-    last_press = {binding.key: 0 for binding in keybindings}
-    DEBOUNCE_TIME = 0.1  # 100ms debounce time
+    content_layout = Layout()
+    content_layout.split_row(
+        Layout(create_bindings_table()),
+    )
+    layout["content"].update(content_layout)
+    
+    # Print layout to console
+    console.print(layout)
+    return Prompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6"])
 
-    try:
-        while True:
-            current_time = time.time()
-            for binding in keybindings:
-                if binding.status and keyboard.is_pressed(binding.key) and \
-                   current_time - last_press[binding.key] > DEBOUNCE_TIME:
-                    keyboard.write(binding.value)
-                    last_press[binding.key] = current_time
-            time.sleep(0.01)  # Reduce CPU usage
-    except KeyboardInterrupt:
-        console.print("[bold red]\nKey Binder stopped.[/bold red]")
+def view_toggle_bindings():
+    console.clear()
+    console.print(create_header("Toggle Key Bindings"))
+    console.print(create_bindings_table())
+    
+    choice = Prompt.ask(
+        "Enter binding number to toggle (or press Enter to go back)",
+        default=""
+    )
+    
+    if choice.isdigit():
+        index = int(choice) - 1
+        if state.toggle_binding(index):
+            binding = state.bindings[index]
+            status = "ACTIVATED" if binding.status else "DISABLED"
+            console.print(f"[bold green]{binding.key} {status}[/bold green]")
+        else:
+            console.print("[bold red]Invalid binding number[/bold red]")
+    
+    console.print("\nPress Enter to continue...")
+    input()
 
-
-# Function to handle user choice
-def handle_choice(choice):
-    if choice == "1":
-        view_toggle_bindings()
-    elif choice == "2":
-        add_binding()
-    elif choice == "3":
-        console.print("[bold yellow]Delete Key Binding[/bold yellow]")
-        # Add logic for deleting key binding
-        delete_binding()
-    elif choice == "4":
-        console.print("[bold yellow]Edit Key Binding[/bold yellow]")
-        # Add logic for editing key binding
-        edit_binding()
-    elif choice == "5":
-        run_keybinder()
-    elif choice == "6":
-        console.print("[bold red]Exiting Program[/bold red]")
-        exit()
+def add_binding():
+    console.clear()
+    console.print(create_header("Add New Key Binding"))
+    
+    key = Prompt.ask("Enter key combination (e.g. 'Alt+x')")
+    value = Prompt.ask("Enter key to map to")
+    
+    if state.add_binding(key, value):
+        console.print(f"[bold green]Added: {key} → {value}[/bold green]")
     else:
-        console.print("[bold red]Invalid Option. Please choose again.[/bold red]")
+        console.print(f"[bold red]Error: Key combination '{key}' already exists[/bold red]")
+    
+    console.print("\nPress Enter to continue...")
+    input()
 
+def delete_binding():
+    console.clear()
+    console.print(create_header("Delete Key Binding"))
+    console.print(create_bindings_table())
+    
+    choice = Prompt.ask(
+        "Enter binding number to delete (or press Enter to go back)",
+        default=""
+    )
+    
+    if choice.isdigit():
+        index = int(choice) - 1
+        if 0 <= index < len(state.bindings):
+            binding = state.bindings[index]
+            if state.delete_binding(index):
+                console.print(f"[bold green]Deleted: {binding.key} → {binding.value}[/bold green]")
+        else:
+            console.print("[bold red]Invalid binding number[/bold red]")
+    
+    console.print("\nPress Enter to continue...")
+    input()
+
+def edit_binding():
+    console.clear()
+    console.print(create_header("Edit Key Binding"))
+    console.print(create_bindings_table())
+    
+    choice = Prompt.ask(
+        "Enter binding number to edit (or press Enter to go back)",
+        default=""
+    )
+    
+    if choice.isdigit():
+        index = int(choice) - 1
+        if 0 <= index < len(state.bindings):
+            binding = state.bindings[index]
+            new_value = Prompt.ask(f"Enter new value for '{binding.key}'", default=binding.value)
+            
+            if state.edit_binding(index, new_value):
+                console.print(f"[bold green]Updated: {binding.key} → {new_value}[/bold green]")
+        else:
+            console.print("[bold red]Invalid binding number[/bold red]")
+    
+    console.print("\nPress Enter to continue...")
+    input()
+
+def run_keybinder():
+    # More thorough console clearing
+    console.clear()
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    console.print(create_header("KeyBinder Running"))
+    
+    # Create a status display
+    active_bindings = [b for b in state.bindings if b.status]
+    table = Table(show_header=True, header_style="bold green", box=None, expand=True)
+    table.add_column("Active Bindings", justify="center", style="cyan")
+    table.add_column("Mapped To", justify="center", style="magenta")
+    
+    for binding in active_bindings:
+        table.add_row(binding.key, binding.value)
+    
+    console.print(table)
+    console.print("[bold yellow]Press Ctrl+C to stop the keybinder[/bold yellow]")
+    
+    # Create optimized lookup dictionary for faster checking
+    active_binding_dict = {b.key: b.value for b in active_bindings}
+    last_press = defaultdict(lambda: 0)
+    DEBOUNCE_TIME = 0.1
+    
+    try:
+        with console.status("[bold green]Monitoring key presses...", spinner="dots") as status:
+            while True:
+                current_time = time.time()
+                for key, value in active_binding_dict.items():
+                    if keyboard.is_pressed(key) and current_time - last_press[key] > DEBOUNCE_TIME:
+                        keyboard.write(value)
+                        last_press[key] = current_time
+                        status.update(f"[bold cyan]Pressed: {key} → {value}")
+                time.sleep(0.01)
+    except KeyboardInterrupt:
+        console.print("[bold red]\nKeyBinder stopped[/bold red]")
+        console.print("\nPress Enter to continue...")
+        input()
+
+# Action handler
+def handle_choice(choice):
+    actions = {
+        "1": view_toggle_bindings,
+        "2": add_binding,
+        "3": delete_binding,
+        "4": edit_binding,
+        "5": lambda: (console.clear(), run_keybinder()),
+        "6": lambda: sys.exit(0)
+    }
+    
+    if choice in actions:
+        actions[choice]()
+    else:
+        console.print("[bold red]Invalid choice[/bold red]")
+        time.sleep(1)
 
 # Main loop
 if __name__ == "__main__":
     while True:
-        display_options()
-        user_choice = input("Enter your choice: ")
-        handle_choice(user_choice)
-        if user_choice == "6":
-            break
+        # More thorough console clearing
+        console.clear()
+        os.system('cls' if os.name == 'nt' else 'clear')
+        
+        choice = display_menu()
+        handle_choice(choice)
